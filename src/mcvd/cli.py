@@ -193,7 +193,13 @@ def cmd_loaders(args: argparse.Namespace) -> int:
     return 0
 
 
-# ------------------------------------------------------------------ 交互模式
+def cmd_gui(args: argparse.Namespace) -> int:
+    from . import gui
+
+    return gui.main()
+
+
+# ------------------------------------------------------------------ 交互模式（备用，命令行里用 mcvd tui）
 
 
 BANNER = f"""
@@ -342,7 +348,23 @@ def build_parser() -> argparse.ArgumentParser:
     p_loaders.add_argument("--limit", type=int, default=15)
     p_loaders.set_defaults(func=cmd_loaders)
 
+    p_gui = sub.add_parser("gui", help="打开图形界面")
+    p_gui.set_defaults(func=cmd_gui)
+
+    p_tui = sub.add_parser("tui", help="打开文字交互菜单（没有图形环境时用）")
+    p_tui.set_defaults(func=lambda _args: interactive())
+
     return parser
+
+
+def _launch_gui() -> int:
+    try:
+        from . import gui
+
+        return gui.main()
+    except Exception:  # noqa: BLE001 - 没有图形环境时退回文字菜单
+        print("无法启动图形界面，改用文字交互模式。", file=sys.stderr)
+        return interactive()
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -350,7 +372,7 @@ def main(argv: list[str] | None = None) -> int:
     args_list = sys.argv[1:] if argv is None else argv
     if not args_list:
         try:
-            return interactive()
+            return _launch_gui()
         except KeyboardInterrupt:
             print("\n已退出")
             return 0

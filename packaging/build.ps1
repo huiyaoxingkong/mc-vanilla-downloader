@@ -1,4 +1,4 @@
-# 构建单文件 exe
+# 构建单文件 exe（GUI + CLI 两个）
 # 用法：
 #   powershell -ExecutionPolicy Bypass -File packaging/build.ps1
 #   powershell -ExecutionPolicy Bypass -File packaging/build.ps1 -PythonExe "C:\Python312\python.exe"
@@ -18,23 +18,30 @@ if ($LASTEXITCODE -ne 0) {
     & $PythonExe -m pip install pyinstaller
 }
 
-$args = @(
-    "-m", "PyInstaller",
-    "--noconfirm",
-    "--onefile",
-    "--console",
-    "--name", "mcvd",
-    "--distpath", "dist",
-    "--workpath", "build/pyinstaller",
-    "--specpath", "build",
-    "--paths", "src",
-    "packaging/entry.py"
-)
-if (-not $KeepBuild) { $args += "--clean" }
+function Build-Exe([string]$Name, [string]$WindowMode) {
+    $args = @(
+        "-m", "PyInstaller",
+        "--noconfirm",
+        "--onefile",
+        $WindowMode,
+        "--name", $Name,
+        "--distpath", "dist",
+        "--workpath", "build/pyinstaller-$Name",
+        "--specpath", "build",
+        "--paths", "src",
+        "packaging/entry.py"
+    )
+    if (-not $KeepBuild) { $args += "--clean" }
+    & $PythonExe @args
+    if ($LASTEXITCODE -ne 0) { throw "PyInstaller 构建 $Name 失败" }
+}
 
-& $PythonExe @args
-if ($LASTEXITCODE -ne 0) { throw "PyInstaller 构建失败" }
+Write-Host "`n[1/2] 构建图形界面版 mcvd.exe（无控制台窗口）"
+Build-Exe "mcvd" "--windowed"
+
+Write-Host "`n[2/2] 构建命令行版 mcvd-cli.exe（保留控制台）"
+Build-Exe "mcvd-cli" "--console"
 
 Write-Host ""
-Write-Host "构建完成：$root\dist\mcvd.exe"
-Get-Item "dist/mcvd.exe" | Select-Object FullName, Length, LastWriteTime | Format-List
+Write-Host "构建完成："
+Get-ChildItem "dist/*.exe" | Select-Object Name, @{n = "MB"; e = { [math]::Round($_.Length / 1MB, 2) } }, LastWriteTime | Format-Table -AutoSize

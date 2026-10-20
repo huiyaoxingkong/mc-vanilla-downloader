@@ -47,6 +47,7 @@ class InstallOptions:
     loader: str | None = None
     loader_version: str | None = None
     java: str | None = None
+    progress_cb: object | None = None  # GUI 用：Callable[[processed, total], None]
 
 
 @dataclass
@@ -224,10 +225,11 @@ def build_asset_tasks(index: dict, mc_dir: Path, opts: InstallOptions) -> list[T
 
 
 class Progress:
-    def __init__(self, total_files: int, silent: bool = False) -> None:
+    def __init__(self, total_files: int, silent: bool = False, callback: object | None = None) -> None:
         self.total_files = total_files
         self.processed = 0
         self.downloaded_bytes = 0
+        self.callback = callback
         self._lock = threading.Lock()
         self._last = 0.0
         self.silent = silent
@@ -240,11 +242,18 @@ class Progress:
     def tick(self) -> None:
         with self._lock:
             self.processed += 1
+            processed, total = self.processed, self.total_files
             now = time.perf_counter()
-            if self.silent or now - self._last < 0.3:
-                return
-            self._last = now
-        self._render()
+            do_render = not self.silent and now - self._last >= 0.3
+            if do_render:
+                self._last = now
+        if self.callback is not None:
+            try:
+                self.callback(processed, total)
+            except Exception:  # noqa: BLE001 - 回调失败不影响下载
+                pass
+        if do_render:
+            self._render()
 
     def _render(self) -> None:
         elapsed = max(time.perf_counter() - self.start, 1e-6)
@@ -390,7 +399,7 @@ def install_payload(
         print(f"下载源：{opts.mirror.name}（{opts.mirror.description}）")
         print(f"共 {total_files} 个文件，约 {human_bytes(total_bytes)}，并发 {opts.threads}\n")
 
-    progress = Progress(total_files, silent=opts.quiet)
+    progress = Progress(total_files, silent=opts.quiet, callback=opts.progress_cb)
 
     if index_task is not None:
         run_tasks([index_task], opts, progress, "资源索引")
