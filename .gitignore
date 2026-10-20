@@ -2,8 +2,6 @@
 __pycache__/
 *.py[cod]
 *.egg-info/
-build/
-dist/
 .venv/
 venv/
 
@@ -11,6 +9,11 @@ venv/
 /tmp-mc/
 /tests/.cache/
 *.log
+
+# PyInstaller
+/dist/
+/build/
+*.spec
 
 # 编辑器
 .vscode/

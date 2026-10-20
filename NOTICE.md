@@ -20,7 +20,20 @@
 
 > BMCLAPI 是免费公益服务。请勿滥用（本项目默认并发 8、失败重试有限次），也请在其服务条款允许的范围内使用。
 
-## 3. 启动器行为参考（未使用其源代码）
+## 3. 加载器相关的官方接口与安装器（调用官方服务/工具，未复制代码）
+
+| 名称 | 用途 | 链接 |
+|---|---|---|
+| Fabric Meta API | 查询 Fabric Loader 版本、获取带 `inheritsFrom` 的 profile JSON | <https://meta.fabricmc.net> |
+| Quilt Meta API | 同上，Quilt | <https://meta.quiltmc.org> |
+| Forge 官网 / maven | 版本推荐列表、官方 `installer.jar` | <https://files.minecraftforge.net> · <https://maven.minecraftforge.net> |
+| NeoForge maven | 版本列表、官方 `installer.jar` | <https://maven.neoforged.net> |
+| Minecraft Wiki — Client.json | 版本 JSON、`inheritsFrom`、`libraries`、`assetIndex` 语义 | <https://minecraft.wiki/w/Client.json> |
+
+> Forge / NeoForge 的安装是通过**运行官方 installer.jar**完成的（`--installClient`），
+> 安装器本身不随本项目分发，每次使用时从官方 maven 现下现用。
+
+## 4. 启动器行为参考（未使用其源代码）
 
 | 项目 | 参考内容 | 许可证 |
 |---|---|---|
@@ -29,12 +42,12 @@
 
 如果你认为本项目某处侵犯了你的权利，请开 issue，我们会立即处理。
 
-## 4. 运行时依赖
+## 5. 运行时依赖
 
 无第三方运行时依赖，仅使用 **Python 3.9+ 标准库**（`urllib`、`hashlib`、`json`、`concurrent.futures` 等）。
 因此不存在传递性的开源许可证义务。
 
-## 5. 免责声明
+## 6. 免责声明
 
 - 本项目**不包含、不托管、不分发**任何 Mojang / Microsoft 的游戏文件；所有文件都从 Mojang 官方服务器或其公开镜像实时下载。
 - 使用本项目下载游戏，仍需你**自行拥有合法的 Minecraft 账号**，并遵守 [Minecraft 使用条款（EULA）](https://www.minecraft.net/eula)。
