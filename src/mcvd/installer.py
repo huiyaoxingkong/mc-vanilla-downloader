@@ -1,0 +1,395 @@
+"""把原版 Minecraft 安装到 .minecraft/versions/<id>/。
+
+安装完成后的目录结构与官方启动器 / PCL 一致：
+
+    <mc_dir>/
+      versions/<id>/<id>.json
+      versions/<id>/<id>.jar
+      libraries/<maven 路径>.jar
+      assets/indexes/<assetIndexId>.json
+      assets/objects/<hash 前两位>/<hash>
+
+PCL、HMCL、官方启动器都能直接识别这套结构。
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import shutil
+import sys
+import threading
+import time
+from dataclasses import dataclass, field
+from pathlib import Path
+
+from . import manifest as _manifest
+from . import mirrors as _mirrors
+from .netio import DownloadError, download_file, fetch_json, human_bytes, iter_parallel
+from .rules import bitness, is_allowed, os_arch, os_name
+
+ASSET_BASE = "https://resources.download.minecraft.net"
+
+
+@dataclass
+class InstallOptions:
+    mc_dir: Path
+    mirror: _mirrors.Mirror
+    threads: int = 16
+    with_assets: bool = True
+    with_libraries: bool = True
+    dry_run: bool = False
+    force: bool = False
+    timeout: float = 20.0
+    retries: int = 3
+    quiet: bool = False
+
+
+@dataclass
+class Task:
+    urls: list[str]
+    dest: Path
+    sha1: str | None = None
+    size: int | None = None
+    kind: str = "file"
+    label: str = ""
+
+
+@dataclass
+class InstallResult:
+    version_id: str
+    version_json: dict
+    processed: int = 0
+    bytes_downloaded: int = 0
+    elapsed: float = 0.0
+    version_dir: Path | None = None
+
+
+def maven_path(name: str) -> str:
+    """把 Maven 坐标 group:artifact:version[:classifier][@ext] 转成相对路径。"""
+    classifier = None
+    ext = "jar"
+    coords = name
+    if "@" in coords:
+        coords, ext = coords.rsplit("@", 1)
+    parts = coords.split(":")
+    if len(parts) < 3:
+        raise ValueError(f"无法解析 Maven 坐标：{name}")
+    group, artifact, version = parts[0], parts[1], parts[2]
+    if len(parts) >= 4:
+        classifier = parts[3]
+    filename = f"{artifact}-{version}" + (f"-{classifier}" if classifier else "") + f".{ext}"
+    return f"{group.replace('.', '/')}/{artifact}/{version}/{filename}"
+
+
+def library_entries(lib: dict, current_os: str, current_arch: str) -> list[dict]:
+    """返回该库在当前平台需要下载的文件（artifact + natives）。"""
+    if not is_allowed(lib.get("rules"), current_os, current_arch):
+        return []
+    downloads = lib.get("downloads") or {}
+    entries: list[dict] = []
+    artifact = downloads.get("artifact")
+    if artifact and artifact.get("url"):
+        entries.append(artifact)
+    natives = lib.get("natives") or {}
+    native_key = natives.get(current_os)
+    if native_key:
+        native_key = native_key.replace("${arch}", bitness())
+        classifier = (downloads.get("classifiers") or {}).get(native_key)
+        if classifier and classifier.get("url"):
+            entries.append(classifier)
+    return entries
+
+
+def relative_path(entry: dict, lib_name: str) -> str:
+    path = entry.get("path")
+    return path if path else maven_path(lib_name)
+
+
+def mirror_urls(mirror: _mirrors.Mirror, official_url: str) -> list[str]:
+    """主源地址 + 其它镜像作为回退。"""
+    urls = [mirror.rewrite(official_url)]
+    for other in _mirrors.ALL_MIRRORS:
+        candidate = other.rewrite(official_url)
+        if candidate not in urls:
+            urls.append(candidate)
+    return urls
+
+
+def build_client_task(version_json: dict, version_id: str, mc_dir: Path, opts: InstallOptions) -> Task:
+    client = (version_json.get("downloads") or {}).get("client")
+    if not client or not client.get("url"):
+        raise DownloadError(f"版本 {version_id} 的 JSON 中没有 downloads.client，无法下载客户端")
+    dest = mc_dir / "versions" / version_id / f"{version_id}.jar"
+    return Task(
+        urls=mirror_urls(opts.mirror, client["url"]),
+        dest=dest,
+        sha1=client.get("sha1"),
+        size=client.get("size"),
+        kind="client",
+        label="client.jar",
+    )
+
+
+def build_library_tasks(version_json: dict, mc_dir: Path, opts: InstallOptions) -> list[Task]:
+    tasks: list[Task] = []
+    current_os, current_arch = os_name(), os_arch()
+    for lib in version_json.get("libraries", []):
+        for entry in library_entries(lib, current_os, current_arch):
+            rel = relative_path(entry, lib.get("name", ""))
+            dest = mc_dir / "libraries" / Path(rel)
+            tasks.append(
+                Task(
+                    urls=mirror_urls(opts.mirror, entry["url"]),
+                    dest=dest,
+                    sha1=entry.get("sha1"),
+                    size=entry.get("size"),
+                    kind="library",
+                    label=rel,
+                )
+            )
+    return tasks
+
+
+def build_asset_tasks(index: dict, mc_dir: Path, opts: InstallOptions) -> list[Task]:
+    tasks: list[Task] = []
+    for name, obj in (index.get("objects") or {}).items():
+        digest = obj.get("hash")
+        if not digest:
+            continue
+        sub = digest[:2]
+        url = f"{ASSET_BASE}/{sub}/{digest}"
+        dest = mc_dir / "assets" / "objects" / sub / digest
+        tasks.append(
+            Task(
+                urls=mirror_urls(opts.mirror, url),
+                dest=dest,
+                sha1=digest,
+                size=obj.get("size"),
+                kind="asset",
+                label=name,
+            )
+        )
+    return tasks
+
+
+class Progress:
+    def __init__(self, total_files: int, silent: bool = False) -> None:
+        self.total_files = total_files
+        self.processed = 0
+        self.downloaded_bytes = 0
+        self._lock = threading.Lock()
+        self._last = 0.0
+        self.silent = silent
+        self.start = time.perf_counter()
+
+    def add_bytes(self, count: int) -> None:
+        with self._lock:
+            self.downloaded_bytes += count
+
+    def tick(self) -> None:
+        with self._lock:
+            self.processed += 1
+            now = time.perf_counter()
+            if self.silent or now - self._last < 0.3:
+                return
+            self._last = now
+        self._render()
+
+    def _render(self) -> None:
+        elapsed = max(time.perf_counter() - self.start, 1e-6)
+        line = (
+            f"\r  {self.processed}/{self.total_files} 个文件"
+            f" | {human_bytes(self.downloaded_bytes)}"
+            f" | {human_bytes(self.downloaded_bytes / elapsed)}/s"
+            f" | {elapsed:0.0f}s"
+        )
+        sys.stderr.write(line[:120].ljust(78))
+        sys.stderr.flush()
+
+    def finish(self) -> None:
+        if self.silent:
+            return
+        elapsed = max(time.perf_counter() - self.start, 1e-6)
+        sys.stderr.write("\r" + " " * 90 + "\r")
+        sys.stderr.write(
+            f"  处理 {self.processed} 个文件，下载 {human_bytes(self.downloaded_bytes)}"
+            f"，耗时 {elapsed:0.1f}s，平均 {human_bytes(self.downloaded_bytes / elapsed)}/s\n"
+        )
+        sys.stderr.flush()
+
+
+def _run_tasks(tasks: list[Task], opts: InstallOptions, progress: Progress, kind: str) -> None:
+    if not tasks:
+        return
+
+    def worker(task: Task) -> None:
+        download_file(
+            task.urls,
+            task.dest,
+            sha1=task.sha1,
+            size=task.size,
+            timeout=opts.timeout,
+            retries=opts.retries,
+            progress=progress.add_bytes,
+            force=opts.force,
+        )
+        progress.tick()
+
+    errors: list[str] = []
+
+    def safe_worker(task: Task) -> None:
+        try:
+            worker(task)
+        except Exception as exc:  # noqa: BLE001 - 汇总后统一抛出
+            errors.append(f"{task.kind}:{task.label}: {exc}")
+
+    iter_parallel(tasks, safe_worker, opts.threads)
+    if errors:
+        raise DownloadError(f"{kind}下载失败：{len(errors)} 个文件出错，例如 {errors[0]}")
+
+
+def _write_json(path: Path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def install(version_spec: str, opts: InstallOptions) -> InstallResult:
+    started = time.perf_counter()
+    mc_dir = opts.mc_dir
+
+    manifest = _manifest.get_manifest(opts.mirror, timeout=opts.timeout, retries=opts.retries)
+    entry = _manifest.pick_version(manifest, version_spec)
+    version_id = entry["id"]
+    version_json = _manifest.get_version_json(entry, opts.mirror, timeout=opts.timeout, retries=opts.retries)
+    version_json.setdefault("id", version_id)
+    version_dir = mc_dir / "versions" / version_id
+
+    asset_index = version_json.get("assetIndex") or {}
+    index_payload: dict | None = None
+    index_task: Task | None = None
+    if opts.with_assets and asset_index.get("url"):
+        index_name = asset_index.get("id", "index")
+        index_task = Task(
+            urls=mirror_urls(opts.mirror, asset_index["url"]),
+            dest=mc_dir / "assets" / "indexes" / f"{index_name}.json",
+            sha1=asset_index.get("sha1"),
+            size=asset_index.get("size"),
+            kind="asset-index",
+            label=f"assets/indexes/{index_name}.json",
+        )
+        # 需要先拿到索引，才能知道要下载哪些资源对象
+        index_payload = fetch_json(index_task.urls, timeout=opts.timeout, retries=opts.retries)
+
+    tasks: list[Task] = [build_client_task(version_json, version_id, mc_dir, opts)]
+    if opts.with_libraries:
+        tasks.extend(build_library_tasks(version_json, mc_dir, opts))
+    if index_payload is not None:
+        tasks.extend(build_asset_tasks(index_payload, mc_dir, opts))
+
+    total_files = len(tasks) + (1 if index_task else 0)
+    total_bytes = sum(t.size or 0 for t in tasks) + (index_task.size or 0 if index_task else 0)
+
+    if opts.dry_run:
+        by_kind: dict[str, list[Task]] = {}
+        for task in tasks:
+            by_kind.setdefault(task.kind, []).append(task)
+        print(f"版本：{version_id}（{entry.get('type')}，{entry.get('releaseTime', '?')}）")
+        print(f"目标目录：{version_dir}")
+        print(f"下载源：{opts.mirror.name}")
+        print("\n[试运行] 计划下载：")
+        for kind, group in by_kind.items():
+            size = sum(t.size or 0 for t in group)
+            print(f"  - {kind:<12} {len(group):>5} 个文件  {human_bytes(size)}")
+        print(f"  - {'合计':<12} {total_files:>5} 个文件  {human_bytes(total_bytes)}")
+        return InstallResult(version_id=version_id, version_json=version_json, version_dir=version_dir)
+
+    if not opts.quiet:
+        print(f"版本：{version_id}（{entry.get('type')}，{entry.get('releaseTime', '?')}）")
+        print(f"目标目录：{version_dir}")
+        print(f"下载源：{opts.mirror.name}（{opts.mirror.description}）")
+        print(f"共 {total_files} 个文件，约 {human_bytes(total_bytes)}，并发 {opts.threads}\n")
+
+    progress = Progress(total_files, silent=opts.quiet)
+
+    # 1) 资源索引（小文件，先取，保证后续列得全）
+    if index_task is not None:
+        _run_tasks([index_task], opts, progress, "资源索引")
+
+    # 2) 客户端 jar + 版本 JSON
+    if not opts.quiet:
+        print("[1/3] 客户端 jar 与版本 JSON")
+    _run_tasks(tasks[:1], opts, progress, "客户端")
+    _write_json(version_dir / f"{version_id}.json", version_json)
+
+    # 3) 依赖库
+    library_tasks = [t for t in tasks if t.kind == "library"]
+    if library_tasks:
+        if not opts.quiet:
+            print(f"[2/3] 依赖库（{len(library_tasks)} 个）")
+        _run_tasks(library_tasks, opts, progress, "依赖库")
+
+    # 4) 资源文件
+    asset_tasks = [t for t in tasks if t.kind == "asset"]
+    if asset_tasks:
+        if not opts.quiet:
+            print(f"[3/3] 资源文件（{len(asset_tasks)} 个）")
+        _run_tasks(asset_tasks, opts, progress, "资源")
+
+    if index_payload is not None:
+        _materialize_legacy_assets(index_payload, asset_index.get("id", "legacy"), mc_dir)
+
+    meta = {
+        "installer": "mcvd",
+        "installedAt": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        "version": version_id,
+        "mirror": opts.mirror.name,
+        "fileCount": total_files,
+    }
+    _write_json(version_dir / "mcvd-install.json", meta)
+
+    progress.finish()
+    elapsed = time.perf_counter() - started
+    result = InstallResult(
+        version_id=version_id,
+        version_json=version_json,
+        processed=progress.processed,
+        bytes_downloaded=progress.downloaded_bytes,
+        elapsed=elapsed,
+        version_dir=version_dir,
+    )
+    if not opts.quiet:
+        print(f"\n安装完成：{version_id} -> {version_dir}")
+        print(f"处理 {result.processed} 个文件，下载 {human_bytes(result.bytes_downloaded)}，耗时 {elapsed:0.1f}s")
+    return result
+
+
+def _materialize_legacy_assets(index: dict, index_id: str, mc_dir: Path) -> None:
+    """1.6~1.7 时代的资源索引带 virtual / map_to_resources 标记。
+
+    官方启动器会把 objects 再复制一份成可读文件名；这里一并处理，
+    保证 PCL 启动这些古老版本时也能找到资源。
+    """
+    objects_dir = mc_dir / "assets" / "objects"
+    targets: list[Path] = []
+    if index.get("virtual"):
+        targets.append(mc_dir / "assets" / "virtual" / index_id)
+    if index.get("map_to_resources"):
+        targets.append(mc_dir / "resources")
+
+    for base in targets:
+        for name, obj in (index.get("objects") or {}).items():
+            digest = obj.get("hash")
+            if not digest:
+                continue
+            source = objects_dir / digest[:2] / digest
+            if not source.is_file():
+                continue
+            dest = base / name
+            if dest.is_file():
+                continue
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                os.link(source, dest)  # 硬链接，省空间
+            except OSError:
+                shutil.copy2(source, dest)
