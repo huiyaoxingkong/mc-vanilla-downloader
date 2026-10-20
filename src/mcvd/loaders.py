@@ -212,11 +212,9 @@ def pick_neoforge_version(game_id: str | None, requested: str | None) -> str:
 
 def ensure_launcher_profiles(mc_dir: Path) -> None:
     """官方 Forge/NeoForge 安装器要求目标目录里有 launcher_profiles.json。"""
-    path = mc_dir / "launcher_profiles.json"
-    if path.is_file():
-        return
-    mc_dir.mkdir(parents=True, exist_ok=True)
-    _installer.write_json(path, {"profiles": {}, "settings": {}, "version": 3})
+    from . import compat
+
+    compat.ensure_official_launcher_profiles(mc_dir)
 
 
 def run_installer(jar: Path, mc_dir: Path, java_exe: str, timeout: int = 3600) -> subprocess.CompletedProcess:

@@ -225,6 +225,7 @@ class App:
         self.threads_var = tk.StringVar(value="16")
         self.skip_assets_var = tk.BooleanVar(value=False)
         self.auto_verify_var = tk.BooleanVar(value=True)
+        self.register_profile_var = tk.BooleanVar(value=True)
 
         ttk.Label(install_frame, text="游戏版本").grid(row=0, column=0, sticky="w")
         self.version_combo = ttk.Combobox(install_frame, textvariable=self.version_var, width=20)
@@ -270,6 +271,12 @@ class App:
                         variable=self.skip_assets_var).grid(row=3, column=3, sticky="w", pady=(8, 0))
         ttk.Checkbutton(install_frame, text="装完自动校验", variable=self.auto_verify_var).grid(
             row=3, column=4, columnspan=2, sticky="w", pady=(8, 0))
+
+        ttk.Checkbutton(install_frame, text="注册到官方启动器（写入 launcher_profiles.json）",
+                        variable=self.register_profile_var).grid(row=4, column=0, columnspan=4,
+                                                                 sticky="w", pady=(6, 0))
+        ttk.Label(install_frame, text="PCL / HMCL / BakaXL / LauncherX 扫描 versions/ 即可识别，无需额外注册",
+                  style="Hint.TLabel").grid(row=4, column=4, columnspan=3, sticky="w", pady=(6, 0))
 
         # ---- 操作按钮
         actions = ttk.Frame(outer)
@@ -384,6 +391,7 @@ class App:
             name=self.name_var.get().strip() or None,
             loader=loader_key,
             loader_version=loader_version,
+            register_profile=self.register_profile_var.get(),
             progress_cb=lambda done, total: self.queue.put(("progress", done, total)),
         )
 

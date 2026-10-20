@@ -64,6 +64,8 @@ class McDirInfo:
     java_list: list[dict] = field(default_factory=list)
     java_checked: bool = False
     size_bytes: int = 0
+    launchers: list = field(default_factory=list)
+    hmcl_isolation: str = ""
     error: str = ""
 
     @property
@@ -125,6 +127,17 @@ def inspect(path: Path, with_size: bool = True, with_java: bool = True) -> McDir
     hmcl = path / "hmcl.json"
     if hmcl.is_file():
         info.hmcl_config = hmcl
+
+    from . import compat
+
+    try:
+        info.launchers = compat.detect_launchers(path)
+        hmcl_settings = compat.read_hmcl_settings(path)
+        iso = hmcl_settings.get("defaultIsolationType") or hmcl_settings.get("versionIsolation")
+        info.hmcl_isolation = str(iso) if iso is not None else ""
+    except Exception:  # noqa: BLE001
+        info.launchers = []
+        info.hmcl_isolation = ""
 
     versions_dir = path / "versions"
     if versions_dir.is_dir():
@@ -207,6 +220,21 @@ def describe(info: McDirInfo, brief: bool = True) -> str:
 
     if info.hmcl_config:
         lines.append("HMCL 配置：检测到 hmcl.json")
+
+    if info.launchers:
+        present = [item for item in info.launchers if item.present]
+        if present:
+            parts = []
+            for item in present:
+                if item.key == "official":
+                    parts.append(f"{item.name}（{item.detail}）")
+                elif item.key == "hmcl" and info.hmcl_isolation:
+                    parts.append(f"{item.name}（默认隔离 {info.hmcl_isolation}）")
+                else:
+                    parts.append(item.name)
+            lines.append("启动器：" + "、".join(parts))
+        else:
+            lines.append("启动器：未检测到配置（版本仍可被 PCL / HMCL / 官方启动器直接扫描）")
 
     if info.versions:
         on = sum(1 for item in info.versions if item.isolated is True)

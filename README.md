@@ -10,6 +10,7 @@
 - 断点续传、SHA-1 校验、失败重试、HTTP 连接复用（keep-alive）
 - 支持 **Fabric / Quilt / Forge / NeoForge**，支持**自定义版本名**（对应 PCL 的「版本名称」）
 - 内置**版本完整性校验与自动修复**（`mcvd verify`）
+- 安装结果**同时适配 PCL / HMCL / 官方启动器 / BakaXL / LauncherX / MSL**
 - 只依赖 Python 3.9+ 标准库，运行时不需 `pip install` 任何东西
 
 > 背景：2026-10-20 起 PCL、HMCL 等在中国大陆展业的启动器陆续关闭了游戏本体下载功能。
@@ -34,6 +35,39 @@
 - 全局默认：`PCL/Setup.ini` 的 `LaunchArgumentIndieV2`（0=关闭，1=隔离可安装 Mod 的版本，2=隔离非正式版，3=两者，4=隔离所有版本）；
 - 单版本覆盖：`versions/<id>/PCL/Setup.ini` 的 `VersionArgumentIndieV2`（True/False）；
 - 没有配置时：如果版本目录下存在非空的 `mods/` 或 `saves/`，按 PCL 的自动规则判定为「已隔离」。
+
+## 启动器兼容
+
+安装出来的就是标准 `.minecraft` 结构，下面这些启动器都能直接识别：
+
+| 启动器 | 需要的格式 | 本工具的处理 |
+|---|---|---|
+| **官方启动器**（Minecraft Launcher） | 除 `versions/<id>/` 外，还要在 `launcher_profiles.json` 的 `profiles` 里有一条 `type: "custom"` 的配置 | 安装完成后自动写入 / 更新配置（保留原有 profiles 与 settings，`version: 6`）；界面里可勾选「注册到官方启动器」，CLI 用 `--no-profile` 关闭 |
+| **PCL2 / PCL2-CE** | 便携模式读 `PCL/Setup.ini`，扫描 `versions/` | 安装结构天然兼容；创建目录时可写入默认版本隔离；识别时读取并显示 |
+| **HMCL** | 扫描 `versions/<id>/<id>.json`；设置在新版 `config/launcher-settings.json`、旧版 `hmcl.json` | 安装结构天然兼容；识别并显示 HMCL 配置是否存在、能读到的隔离设置 |
+| **BakaXL / LauncherX / MSL** | 扫描标准 `.minecraft` 结构 | 安装结构天然兼容；识别到对应文件时在界面标出 |
+
+GUI 的目录检测会直接列出「启动器：官方启动器（launcher_profiles.json，N 个配置）· HMCL · PCL2 …」。
+安装时只写两个地方：`versions/` 与 `launcher_profiles.json`（后者可关），不会改动启动器本体。
+
+官方启动器配置写入的内容（`type` 固定为 `custom`）：
+
+```json
+{
+  "profiles": {
+    "<uuid>": {
+      "created": "2026-10-21T04:25:00.000Z",
+      "icon": "Grass",
+      "lastUsed": "2026-10-21T04:25:00.000Z",
+      "lastVersionId": "1.20.1-forge-47.4.10",
+      "name": "1.20.1-forge-47.4.10",
+      "type": "custom"
+    }
+  },
+  "settings": { "...": "保持原样，缺失时补默认值" },
+  "version": 6
+}
+```
 
 ## 命令行
 
@@ -149,6 +183,7 @@ URL 重写规则（纯函数，见 `src/mcvd/mirrors.py`）：
 src/mcvd/
 ├── gui.py        # 图形界面（tkinter）
 ├── detect.py     # 目录识别 / 创建（版本隔离判定）
+├── compat.py     # 启动器兼容（官方 launcher_profiles / HMCL / BakaXL 等识别）
 ├── cli.py        # 命令行
 ├── mirrors.py    # 镜像定义与 URL 重写
 ├── manifest.py   # 版本清单/版本 JSON 解析
@@ -159,7 +194,7 @@ src/mcvd/
 ├── java.py       # 查找本机 Java（Forge 安装器需要）
 └── verify.py     # 版本完整性校验与修复
 packaging/        # PyInstaller 入口与构建脚本
-tests/            # 56 个纯离线单元测试
+tests/            # 66 个纯离线单元测试
 docs/MIRRORS.md   # 镜像调研与实测数据
 ```
 
@@ -169,7 +204,7 @@ docs/MIRRORS.md   # 镜像调研与实测数据
 python -m unittest discover -s tests -v
 ```
 
-单元测试不联网，覆盖 URL 重写、rules 判定、版本选择、路径生成、哈希校验、校验/修复逻辑、目录识别与版本隔离判定、加载器工具函数。
+单元测试不联网，覆盖 URL 重写、rules 判定、版本选择、路径生成、哈希校验、校验/修复逻辑、目录识别与版本隔离判定、启动器兼容（launcher_profiles 注册与保留、HMCL 配置识别）、加载器工具函数。
 
 ## 开源与致谢
 

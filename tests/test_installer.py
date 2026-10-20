@@ -76,6 +76,36 @@ class TestLibraryEntries(unittest.TestCase):
         self.assertEqual(len(entries), 1)
         self.assertIn("natives-windows", entries[0]["path"])
 
+    def test_classifier_only_without_url_field(self):
+        """老版本（1.6 以前）的库只有 classifiers，没有 artifact 和 url 字段。"""
+        from mcvd.installer import library_files
+
+        lib = {
+            "name": "org.lwjgl.lwjgl:lwjgl-platform:2.9.0",
+            "natives": {"windows": "natives-windows"},
+            "downloads": {
+                "classifiers": {
+                    "natives-windows": {
+                        "path": "org/lwjgl/lwjgl/lwjgl-platform/2.9.0/lwjgl-platform-2.9.0-natives-windows.jar",
+                        "sha1": "3f11873",
+                        "size": 609967,
+                        "url": "https://libraries.minecraft.net/org/lwjgl/lwjgl/lwjgl-platform/2.9.0/lwjgl-platform-2.9.0-natives-windows.jar",
+                    }
+                }
+            },
+        }
+        files = library_files(lib, "windows", "x86_64")
+        self.assertEqual(len(files), 1)
+        self.assertTrue(files[0]["url"].startswith("https://libraries.minecraft.net/"))
+        self.assertIn("-natives-windows.jar", files[0]["path"])
+
+    def test_name_only_library_is_skipped(self):
+        """既没有 artifact 也没有 url 的库不应生成相对 URL 的下载任务。"""
+        from mcvd.installer import library_files
+
+        files = library_files({"name": "com.example:no-url:1.0"}, "windows", "x86_64")
+        self.assertEqual(files, [])
+
 
 class TestTasks(unittest.TestCase):
     def test_build_library_task_paths(self):

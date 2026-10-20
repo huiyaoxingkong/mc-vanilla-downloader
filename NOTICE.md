@@ -33,18 +33,20 @@
 > Forge / NeoForge 的安装是通过**运行官方 installer.jar**完成的（`--installClient`），
 > 安装器本身不随本项目分发，每次使用时从官方 maven 现下现用。
 
-## 4. 启动器行为参考（未使用其源代码）
+## 4. 启动器格式与行为参考（未使用其源代码）
 
-| 项目 | 参考内容 | 许可证 |
+| 项目 | 参考内容 | 许可证 / 链接 |
 |---|---|---|
-| PCL2（Plain Craft Launcher 2） | 启动器可识别的目录布局（`versions/<id>/<id>.json` + `<id>.jar`、便携模式 `PCL/` 目录） | 闭源，仅参考行为 |
-| HMCL | 原版安装流程的常规做法（先拉清单 → 再拉版本 JSON → 再下载库/资源） | GPL-3.0，**未引用任何代码** |
+| 官方启动器 `launcher_profiles.json` | `profiles` 条目字段（`type` / `created` / `lastUsed` / `lastVersionId` / `icon`）、`settings`、`version: 6` 的格式；按本机 `%APPDATA%\.minecraft\launcher_profiles.json` 实测 | Mojang / Microsoft，仅参考文件格式 |
+| PCL2（Plain Craft Launcher 2） | 目录布局（`versions/<id>/<id>.json` + `<id>.jar`、便携模式 `PCL/`）、版本隔离设置 `LaunchArgumentIndieV2` / `VersionArgumentIndieV2` 的取值语义 | 闭源（现已在 GitHub 开源，Meloong-Git/PCL），仅参考行为 |
+| HMCL | 版本扫描方式（`versions/`）、全局版本隔离语义（`DefaultIsolationType`: ALWAYS / MODDED / NEVER）、配置位置（新版 `config/launcher-settings.json`、旧版 `hmcl.json`） | GPL-3.0，**未引用任何代码** · <https://github.com/HMCL-dev/HMCL> · <https://docs.hmcl.net/launcher/isolation.html> |
+| BakaXL / LauncherX / MSL | 仅识别其配置文件名 / 目录（`BakaXL/`、`launcherx.json`、`MSL.exe`），用于在界面上提示 | 闭源，仅识别文件 |
 
 如果你认为本项目某处侵犯了你的权利，请开 issue，我们会立即处理。
 
 ## 5. 运行时依赖
 
-无第三方运行时依赖，仅使用 **Python 3.9+ 标准库**（`urllib`、`hashlib`、`json`、`concurrent.futures` 等）。
+无第三方运行时依赖，仅使用 **Python 3.9+ 标准库**（`urllib`、`hashlib`、`json`、`concurrent.futures`、`tkinter` 等）。
 因此不存在传递性的开源许可证义务。
 
 ## 6. 免责声明

@@ -77,6 +77,7 @@ def _make_options(args: argparse.Namespace, mirror: _mirrors.Mirror) -> InstallO
         loader=getattr(args, "loader", None),
         loader_version=getattr(args, "loader_version", None),
         java=getattr(args, "java", None),
+        register_profile=not getattr(args, "no_profile", False),
     )
 
 
@@ -322,6 +323,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_install.add_argument("--java", help="运行 Forge/NeoForge 安装器使用的 java.exe 路径")
     p_install.add_argument("--installer", help="已下载好的 Forge/NeoForge installer.jar 路径（离线时用）")
     p_install.add_argument("--threads", type=int, default=16, help="并发下载线程数，默认 16")
+    p_install.add_argument("--no-profile", action="store_true",
+                           help="不写入 launcher_profiles.json（官方启动器看不到该版本）")
     p_install.add_argument("--no-assets", action="store_true", help="跳过资源文件（体积最大）")
     p_install.add_argument("--no-libraries", action="store_true", help="跳过依赖库")
     p_install.add_argument("--dry-run", action="store_true", help="只估算大小，不下载")

@@ -47,6 +47,7 @@ class InstallOptions:
     loader: str | None = None
     loader_version: str | None = None
     java: str | None = None
+    register_profile: bool = True  # 是否写入 launcher_profiles.json（官方启动器可见）
     progress_cb: object | None = None  # GUI 用：Callable[[processed, total], None]
 
 
@@ -120,7 +121,8 @@ def library_files(lib: dict, current_os: str | None = None, current_arch: str | 
 
     downloads = lib.get("downloads") or {}
     name = lib.get("name", "")
-    base_url = (lib.get("url") or "").rstrip("/") + "/"
+    raw_base = lib.get("url")
+    base_url = raw_base.rstrip("/") + "/" if raw_base else ""
     files: list[dict] = []
 
     artifact = downloads.get("artifact")
@@ -424,6 +426,15 @@ def install_payload(
 
     if index_payload is not None:
         _materialize_legacy_assets(index_payload, asset_index.get("id", "legacy"), mc_dir)
+
+    # 注册到官方启动器的配置列表（launcher_profiles.json），HMCL/PCL 不需要这一步
+    if opts.register_profile:
+        try:
+            from . import compat
+
+            compat.register_official_profile(mc_dir, target_id, display_name=target_id)
+        except Exception:  # noqa: BLE001 - 注册失败不影响安装
+            pass
 
     meta = {
         "installer": "mcvd",
