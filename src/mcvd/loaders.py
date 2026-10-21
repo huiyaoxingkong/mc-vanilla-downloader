@@ -102,13 +102,39 @@ def fabric_loader_version(game_id: str) -> str:
     return loader or profile.get("id", "")
 
 
+def _version_sort_key(value: str) -> list[int]:
+    parts: list[int] = []
+    for piece in value.replace("-", ".").replace("_", ".").split("."):
+        parts.append(int(piece) if piece.isdigit() else 0)
+    return parts
+
+
+def forge_versions_for(game_id: str, promos: dict | None = None) -> list[str]:
+    """Forge 为某个游戏版本提供了哪些版本号（来自 promotions_slim.json）。"""
+    promos = promos if promos is not None else forge_promotions()
+    prefix = f"{game_id}-"
+    versions = {
+        value for key, value in promos.items() if key.startswith(prefix) and isinstance(value, str) and value
+    }
+    return sorted(versions, key=_version_sort_key, reverse=True)
+
+
+def neoforge_versions_for(game_id: str) -> list[str]:
+    return [version for version in reversed(neoforge_versions()) if neoforge_game_version(version) == game_id]
+
+
 def loaders_for(game_id: str, loader: str) -> list[str]:
+    """某个加载器在某个游戏版本下的可用版本号（新版在前）。"""
     if loader == "fabric":
         data = fetch_json([f"{FABRIC_META}/versions/loader/{game_id}"])
         return [item["loader"]["version"] for item in data]
     if loader == "quilt":
         data = fetch_json([f"{QUILT_META}/versions/loader/{game_id}"])
         return [item["loader"]["version"] for item in data]
+    if loader == "forge":
+        return forge_versions_for(game_id)
+    if loader == "neoforge":
+        return neoforge_versions_for(game_id)
     return []
 
 

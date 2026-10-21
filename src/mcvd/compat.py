@@ -86,20 +86,36 @@ def register_official_profile(
     display_name: str | None = None,
     icon: str = "Grass",
     overwrite: bool = True,
+    game_dir: Path | str | None = None,
 ) -> str | None:
     """在 launcher_profiles.json 里注册 / 更新一条自定义配置。
 
-    返回 profile 的 uuid；不修改任何游戏文件。
+    game_dir：官方启动器用这个字段决定「游戏目录」；设置成 versions/<id> 时，
+    隔离版本里的存档就能在官方启动器里看到。
     """
     payload = load_profiles(mc_dir)
     profiles: dict = payload["profiles"]
 
     name = display_name or version_id
+    target_game_dir = str(game_dir) if game_dir is not None else None
     existing_id = None
     for key, entry in profiles.items():
-        if str(entry.get("lastVersionId", "")).lower() == version_id.lower():
-            existing_id = key
-            break
+        if str(entry.get("lastVersionId", "")).lower() != version_id.lower():
+            continue
+        entry_game_dir = entry.get("gameDir")
+        if target_game_dir is None:
+            if entry_game_dir:
+                continue
+        else:
+            if not entry_game_dir:
+                continue
+            try:
+                if Path(entry_game_dir).resolve() != Path(target_game_dir).resolve():
+                    continue
+            except OSError:
+                continue
+        existing_id = key
+        break
 
     if existing_id and not overwrite:
         return existing_id
@@ -110,9 +126,11 @@ def register_official_profile(
         entry["name"] = name
         entry.setdefault("created", now)
         entry["lastUsed"] = now
+        if target_game_dir is not None:
+            entry["gameDir"] = target_game_dir
     else:
         existing_id = uuid.uuid4().hex
-        profiles[existing_id] = {
+        entry = {
             "created": now,
             "icon": icon,
             "lastUsed": now,
@@ -120,6 +138,9 @@ def register_official_profile(
             "name": name,
             "type": "custom",
         }
+        if target_game_dir is not None:
+            entry["gameDir"] = target_game_dir
+        profiles[existing_id] = entry
 
     payload.setdefault("settings", dict(DEFAULT_SETTINGS))
     payload.setdefault("version", 6)

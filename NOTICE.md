@@ -46,8 +46,14 @@
 
 ## 5. 运行时依赖
 
-无第三方运行时依赖，仅使用 **Python 3.9+ 标准库**（`urllib`、`hashlib`、`json`、`concurrent.futures`、`tkinter` 等）。
-因此不存在传递性的开源许可证义务。
+命令行 / 安装核心只用 **Python 3.9+ 标准库**；图形界面额外使用两个开源库（打包时已一并打进 exe）：
+
+| 依赖 | 用途 | 许可证 | 链接 |
+|---|---|---|---|
+| **customtkinter** | 现代风格 tkinter 主题与控件 | MIT | <https://github.com/TomSchimansky/CustomTkinter> |
+| **darkdetect** | 跟随系统深浅色 | BSD-3-Clause | <https://github.com/albertosottile/darkdetect> |
+
+以上许可证与本项目 MIT 兼容；本项目的代码未修改这两个库。
 
 ## 6. 免责声明
 

@@ -1,40 +1,71 @@
 # mc-vanilla-downloader（mcvd）
 
-一个只用 Python 标准库写的 **Minecraft 原版 / 加载器安装器**：从 Mojang 官方或国内镜像（BMCLAPI）把指定版本的客户端、依赖库、资源文件下载到 `.minecraft` 目录，生成 **PCL / HMCL / 官方启动器都能直接识别**的版本。
+**Minecraft 存档 / 游戏目录管理工具 + 原版安装器**（默认图形界面，深色现代 UI）。管理多个 `.minecraft` 目录、版本与存档，识别 PCL / HMCL 的版本隔离，把**隔离存档注册到官方启动器**；同时提供原版 / Fabric / Quilt / Forge / NeoForge 的下载安装。
 
-**默认是图形界面**（双击 exe 即用）：选择下载目录、自动识别已有目录的版本与版本隔离状态、一键创建新的 `.minecraft`；安装 / 校验 / 测速都在后台跑。命令行仍然保留，适合脚本化。
+> **不提供启动游戏功能**：只做目录、存档、版本与安装的管理。
 
 ![主界面](docs/images/gui-main.png)
 
-- 多源自动测速选源，单文件失败自动切换镜像
-- 断点续传、SHA-1 校验、失败重试、HTTP 连接复用（keep-alive）
-- 支持 **Fabric / Quilt / Forge / NeoForge**，支持**自定义版本名**（对应 PCL 的「版本名称」）
-- 内置**版本完整性校验与自动修复**（`mcvd verify`）
-- 安装结果**同时适配 PCL / HMCL / 官方启动器 / BakaXL / LauncherX / MSL**
-- 只依赖 Python 3.9+ 标准库，运行时不需 `pip install` 任何东西
+- 💾 **存档管理**：列出全局 `saves/` 与各隔离版本 `versions/<版本>/saves` 里的存档（大小、最近游玩时间），一键注册到官方启动器
+- 🧩 **版本管理**：每个版本的隔离状态、隔离存档数、官方启动器配置条数
+- 📁 **多目录**：自动识别 .minecraft、启动器配置（PCL / HMCL / BakaXL / LauncherX / MSL）、Java、占用空间
+- ⬇ **安装游戏**：原版与加载器，加载器版本**联网拉取后可选**（不再只有「自动」）
+- ✅ **校验修复**：沿 `inheritsFrom` 全量校验 SHA-1，可自动重下损坏文件
+- 单实例运行（重复双击只把已有窗口提到前台）、后台任务不弹窗打扰
+- 界面使用 [customtkinter](https://github.com/TomSchimansky/CustomTkinter)（MIT）；打包后的 exe 免安装
 
 > 背景：2026-10-20 起 PCL、HMCL 等在中国大陆展业的启动器陆续关闭了游戏本体下载功能。
 > 本工具不在启动器里改任何东西，只是把**官方原版文件**按标准目录结构装好，供**个人自用**。
 > 请先阅读 [免责声明](#免责声明)。
 
-## 图形界面（推荐）
+## 图形界面（默认）
 
-双击 `mcvd.exe`，或者运行 `python -m mcvd`（不带参数）。
+双击 `mcvd.exe`，或者运行 `python -m mcvd`（不带参数）。左侧导航，共 6 个页面：
 
-| 区域 | 能做什么 |
+| 页面 | 能做什么 |
 |---|---|
-| **游戏目录** | 输入 / 浏览选择任意 `.minecraft`；自动识别是否为 MC 目录、已装版本、assets/libraries/launcher_profiles、**PCL 便携配置与版本隔离**、Java 列表、占用空间；点「详情」看逐个版本的隔离状态 |
-| **创建游戏文件夹…** | 选创建位置、文件夹名、**默认版本隔离**（关闭 / 仅隔离可安装 Mod 的版本 / 仅隔离非正式版 / 两者 / 全部，写入 `PCL/Setup.ini` 的 `LaunchArgumentIndieV2`），可勾选是否生成 versions/assets/libraries 基础结构 |
-| **安装设置** | 游戏版本（正式版 / 快照 / 全部）、加载器与版本、自定义版本名、下载源（自动测速 / 官方 / BMCLAPI）、线程数、跳过资源、装完自动校验 |
-| **操作** | 开始安装 / 校验并修复 / 测速下载源；实时进度条 + 日志 |
+| **游戏目录** | 选择任意 `.minecraft`；识别版本、存档、assets/libraries、**PCL 便携配置与版本隔离**、启动器、Java、占用空间；「详情」看逐个版本状态；「创建…」新建游戏文件夹 |
+| **存档管理** | 全局 + 隔离存档列表；每条可「注册到官方启动器」「打开」；顶部可「注册全部隔离版本」 |
+| **版本管理** | 已安装版本卡片：隔离状态、隔离存档数、官方启动器配置数；可注册到官方启动器 / 打开目录 |
+| **安装游戏** | 游戏版本、加载器与**加载器版本下拉（联网获取）**、自定义版本名、下载源、线程、进度条与日志 |
+| **校验修复** | 校验全部 / 校验并修复，结果写入日志 |
+| **设置** | 深色 / 浅色 / 跟随系统、下载源测速、关于 |
+
+「创建游戏文件夹」对话框：选创建位置、文件夹名、**默认版本隔离**（写入 `PCL/Setup.ini` 的 `LaunchArgumentIndieV2`），可勾选生成基础结构与 PCL 便携配置。
 
 ![创建游戏文件夹](docs/images/gui-create.png)
+
+存档管理（每条存档都能一键注册到官方启动器）与安装页面（加载器版本联网获取后可下拉选择）：
+
+![存档管理](docs/images/gui-saves.png)
+
+![安装游戏](docs/images/gui-install.png)
 
 「版本隔离」的识别依据（与 PCL 2.9x 一致）：
 
 - 全局默认：`PCL/Setup.ini` 的 `LaunchArgumentIndieV2`（0=关闭，1=隔离可安装 Mod 的版本，2=隔离非正式版，3=两者，4=隔离所有版本）；
 - 单版本覆盖：`versions/<id>/PCL/Setup.ini` 的 `VersionArgumentIndieV2`（True/False）；
 - 没有配置时：如果版本目录下存在非空的 `mods/` 或 `saves/`，按 PCL 的自动规则判定为「已隔离」。
+
+## 存档管理：把隔离存档注册到官方启动器
+
+启用版本隔离后，存档不在 `.minecraft/saves`，而在 `versions/<版本>/saves`。官方启动器默认只看 `.minecraft/saves`，所以这些存档在官方启动器里「看不见」。
+
+解决方法：往 `launcher_profiles.json` 写一条带 `gameDir` 的 `custom` 配置，`gameDir` 指向 `versions/<版本>`。本工具在「存档管理」「版本管理」里都可以一键完成：
+
+```json
+"profiles": {
+  "<uuid>": {
+    "name": "新的世界（NTM NEXT）",
+    "type": "custom",
+    "lastVersionId": "NTM NEXT",
+    "gameDir": "C:\\Users\\lihao\\AppData\\Roaming\\.minecraft\\versions\\NTM NEXT",
+    "icon": "Grass",
+    "created": "2026-10-21T20:58:00.000Z",
+    "lastUsed": "2026-10-21T20:58:00.000Z"
+  }
+}
+```
 
 ## 启动器兼容
 
@@ -49,25 +80,6 @@
 
 GUI 的目录检测会直接列出「启动器：官方启动器（launcher_profiles.json，N 个配置）· HMCL · PCL2 …」。
 安装时只写两个地方：`versions/` 与 `launcher_profiles.json`（后者可关），不会改动启动器本体。
-
-官方启动器配置写入的内容（`type` 固定为 `custom`）：
-
-```json
-{
-  "profiles": {
-    "<uuid>": {
-      "created": "2026-10-21T04:25:00.000Z",
-      "icon": "Grass",
-      "lastUsed": "2026-10-21T04:25:00.000Z",
-      "lastVersionId": "1.20.1-forge-47.4.10",
-      "name": "1.20.1-forge-47.4.10",
-      "type": "custom"
-    }
-  },
-  "settings": { "...": "保持原样，缺失时补默认值" },
-  "version": 6
-}
-```
 
 ## 命令行
 
@@ -181,7 +193,8 @@ URL 重写规则（纯函数，见 `src/mcvd/mirrors.py`）：
 
 ```
 src/mcvd/
-├── gui.py        # 图形界面（tkinter）
+├── gui.py        # 图形界面（customtkinter）
+├── saves.py      # 存档发现 / 注册到官方启动器（gameDir）
 ├── detect.py     # 目录识别 / 创建（版本隔离判定）
 ├── compat.py     # 启动器兼容（官方 launcher_profiles / HMCL / BakaXL 等识别）
 ├── cli.py        # 命令行
@@ -194,7 +207,7 @@ src/mcvd/
 ├── java.py       # 查找本机 Java（Forge 安装器需要）
 └── verify.py     # 版本完整性校验与修复
 packaging/        # PyInstaller 入口与构建脚本
-tests/            # 66 个纯离线单元测试
+tests/            # 74 个纯离线单元测试
 docs/MIRRORS.md   # 镜像调研与实测数据
 ```
 
@@ -204,11 +217,12 @@ docs/MIRRORS.md   # 镜像调研与实测数据
 python -m unittest discover -s tests -v
 ```
 
-单元测试不联网，覆盖 URL 重写、rules 判定、版本选择、路径生成、哈希校验、校验/修复逻辑、目录识别与版本隔离判定、启动器兼容（launcher_profiles 注册与保留、HMCL 配置识别）、加载器工具函数。
+单元测试不联网，覆盖 URL 重写、rules 判定、版本选择、路径生成、哈希校验、校验/修复逻辑、目录识别与版本隔离判定、启动器兼容（launcher_profiles 注册与保留、HMCL 配置识别）、存档发现与「隔离存档注册到官方启动器」、加载器版本列表解析。
 
 ## 开源与致谢
 
 - 代码以 **MIT** 许可发布，见 [LICENSE](LICENSE)。
+- 界面使用 **customtkinter**（MIT）与 **darkdetect**（BSD-3-Clause），已打包进 exe。
 - 参考的公开规范、镜像服务与启动器行为，全部列在 [NOTICE.md](NOTICE.md)：
   Mojang 版本清单规范、Minecraft Wiki 的 Client.json 文档、**BMCLAPI**（bangbang93 维护的社区镜像）、
   **Fabric / Quilt / Forge / NeoForge 官方 meta 与安装器**、PCL2 / HMCL 的目录约定。

@@ -54,6 +54,19 @@ class TestLoaderHelpers(unittest.TestCase):
     def test_supported_loaders(self):
         self.assertEqual(loaders.loader_choices(), ["fabric", "quilt", "forge", "neoforge"])
 
+    def test_forge_versions_for(self):
+        promos = {
+            "1.20.1-recommended": "47.2.0",
+            "1.20.1-latest": "47.4.28",
+            "1.19.2-recommended": "43.2.0",
+            "1.20.1-other": "47.3.0",
+        }
+        versions = loaders.forge_versions_for("1.20.1", promos)
+        self.assertEqual(versions, ["47.4.28", "47.3.0", "47.2.0"])
+
+    def test_forge_versions_empty(self):
+        self.assertEqual(loaders.forge_versions_for("9.9.9", {"1.20.1-latest": "47.4.28"}), [])
+
 
 if __name__ == "__main__":
     unittest.main()

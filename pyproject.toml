@@ -1,14 +1,15 @@
-﻿[build-system]
+[build-system]
 requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "mcvd"
-version = "0.4.0"
+version = "0.5.0"
 description = "Minecraft 鍘熺増涓嬭浇/瀹夎鍣細澶氭簮鑷姩閫夋簮锛堝畼鏂?/ BMCLAPI锛夈€佹柇鐐圭画浼犮€丼HA-1 鏍￠獙"
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
+dependencies = ["customtkinter>=5.2"]
 authors = [{ name = "huiyaoxingkong" }]
 keywords = ["minecraft", "launcher", "downloader", "bmclapi", "vanilla"]
 classifiers = [

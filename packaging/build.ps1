@@ -29,6 +29,9 @@ function Build-Exe([string]$Name, [string]$WindowMode) {
         "--workpath", "build/pyinstaller-$Name",
         "--specpath", "build",
         "--paths", "src",
+        "--collect-all", "customtkinter",
+        "--collect-submodules", "mcvd",
+        "--hidden-import", "mcvd.gui",
         "packaging/entry.py"
     )
     if (-not $KeepBuild) { $args += "--clean" }
